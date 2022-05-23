@@ -17,7 +17,9 @@
 package com.example.android.trackmysleepquality.sleeptracker
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Transformations
 import androidx.lifecycle.viewModelScope
@@ -25,7 +27,6 @@ import com.example.android.trackmysleepquality.database.SleepDatabaseDao
 import com.example.android.trackmysleepquality.database.SleepNight
 import com.example.android.trackmysleepquality.formatNights
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
@@ -35,18 +36,37 @@ class SleepTrackerViewModel(
         val database: SleepDatabaseDao,
         application: Application) : AndroidViewModel(application) {
 
-    private var tonight = MutableLiveData<SleepNight?>()
-    private val nights = database.getAllNights()
-    val nightsString = Transformations.map(nights) { nights ->
-        formatNights(nights, application.resources)
+    private var _showSnackbasEvent = MutableLiveData<Boolean>()
+    val showSnackBarEvent: LiveData<Boolean> = _showSnackbasEvent
 
+    fun doneShowingSnackbar() {
+        _showSnackbasEvent.value = false
     }
 
-    private var viewModelJob = Job()
+    private var tonight = MutableLiveData<SleepNight?>()
+    private val nights = database.getAllNights()
 
-    override fun onCleared() {
-        super.onCleared()
-        viewModelJob.cancel()
+    private val _navigateToSleepQuality = MutableLiveData<SleepNight>()
+    val navigateToSleepQuality: LiveData<SleepNight> = _navigateToSleepQuality
+
+    fun doneNavigating() {
+        _navigateToSleepQuality.value = null
+    }
+
+    val nightsString = Transformations.map(nights) { nights ->
+        formatNights(nights, application.resources)
+    }
+
+    val startButtonVisible = Transformations.map(tonight) { nights ->
+        nights == null
+    }
+
+    val stopButtonVisible = Transformations.map(tonight) { nights ->
+        nights != null
+    }
+
+    val clearButtonVisible = Transformations.map(nights) { nights ->
+        nights?.isNotEmpty()
     }
 
     init {
@@ -85,6 +105,13 @@ class SleepTrackerViewModel(
             val oldNight = tonight.value ?: return@launch
             oldNight.endTimeMilli = System.currentTimeMillis()
             update(oldNight)
+            Log.i("GALOG", "SleepTrackerViewModel: oldNight= ${oldNight.nightId}")
+            try {
+                _navigateToSleepQuality.postValue(oldNight)
+            }catch (e: Exception) {
+                Log.i("GALOG", "SleepTrackerViewModel: ERROR")
+                e.printStackTrace()
+            }
         }
     }
 
@@ -96,6 +123,7 @@ class SleepTrackerViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             clear()
             tonight.postValue(null)
+            _showSnackbasEvent.postValue(true)
         }
     }
 
